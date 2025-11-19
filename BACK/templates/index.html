@@ -702,13 +702,13 @@ body {
     </footer>
 
 </div>
-
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
+    // shared state
     let html5QrCode = null;
     let scannerActive = false;
 
-    // Sample valid serials for demonstration
+    // local dev fallback set (kept for dev/testing only)
     const validSerials = new Set([
         'RV123456',
         'RV789012',
@@ -716,10 +716,11 @@ body {
         'RV901234'
     ]);
 
+    // ---------- Verification (production-style) ----------
     async function verifySerial() {
         const input = document.getElementById('serial-input');
         const code = input.value.trim().toUpperCase();
-        
+
         if (!code) {
             showResult('Please enter a serial number', false, '');
             return;
@@ -730,34 +731,38 @@ body {
         try {
             const response = await fetch('/verify', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code: code })
-            }).catch(() => {
-                return {
-                    ok: true,
-                    json: async () => ({
-                        valid: validSerials.has(code),
-                        status: validSerials.has(code) ? 'Original Product' : 'Fake or Unknown Product'
-                    })
-                };
             });
+
+            // If server is unreachable (dev), you can decide to use fallback
+            // For production we fail explicitly:
+            if (!response.ok) {
+                throw new Error('Server error');
+            }
 
             const data = await response.json();
             showLoader(false);
-            
+
             if (data.valid) {
                 showResult(data.status, true, code);
+                // Clear input to reduce copy-paste reuse
+                input.value = '';
             } else {
                 showResult(data.status, false, code);
             }
         } catch (error) {
             showLoader(false);
-            showResult('Verification failed. Please try again.', false, '');
+            // Optional: uncomment fallback behavior during dev only
+            // const data = { valid: validSerials.has(code), status: validSerials.has(code) ? 'Original Product' : 'Fake or Unknown Product' };
+            // if (data.valid) showResult(data.status, true, code); else showResult(data.status, false, code);
+
+            showResult('Verification failed. Please try again (server error).', false, '');
+            console.error('verifySerial error:', error);
         }
     }
 
+    // ---------- QR Scanner controls (copy of the working scanner) ----------
     function toggleScanner() {
         if (scannerActive) {
             stopScanner();
@@ -771,6 +776,7 @@ body {
         qrReader.style.display = 'block';
         scannerActive = true;
 
+        // create a new Html5Qrcode instance if not present
         html5QrCode = new Html5Qrcode("qr-reader");
 
         try {
@@ -785,6 +791,7 @@ body {
             );
         } catch (err) {
             showResult('Camera access denied or not available', false, '');
+            console.error('startScanner error:', err);
             stopScanner();
         }
     }
@@ -792,29 +799,43 @@ body {
     function stopScanner() {
         if (html5QrCode) {
             html5QrCode.stop().then(() => {
+                // clear and hide the reader element
+                document.getElementById('qr-reader').innerHTML = "";
+                document.getElementById('qr-reader').style.display = 'none';
+                scannerActive = false;
+            }).catch(err => {
+                console.warn('html5QrCode.stop() failed:', err);
+                // try to hide anyway
                 document.getElementById('qr-reader').style.display = 'none';
                 scannerActive = false;
             });
+        } else {
+            document.getElementById('qr-reader').style.display = 'none';
+            scannerActive = false;
         }
     }
 
-    function onScanSuccess(decodedText) {
+    function onScanSuccess(decodedText, decodedResult) {
+        // put result into input, stop scanner, and verify
         document.getElementById('serial-input').value = decodedText;
         stopScanner();
-        verifySerial();
+        // small timeout to allow UI to settle (optional)
+        setTimeout(() => verifySerial(), 150);
     }
 
     function onScanFailure(error) {
-        // Silent - continuous scanning
+        // silent; continuous scanning will keep trying
+        // console.debug('scan failure:', error);
     }
 
+    // ---------- UI helpers ----------
     function showResult(message, isSuccess, code) {
         const resultDiv = document.getElementById('result');
         resultDiv.className = 'qr-result ' + (isSuccess ? 'success' : 'error');
-        
+
         const icon = isSuccess ? '✅' : '❌';
         const serialInfo = code ? `<div class="qr-result-details">Serial: ${code}</div>` : '';
-        
+
         resultDiv.innerHTML = `
             <span class="qr-result-icon">${icon}</span>
             <div class="qr-result-message">${message}</div>
@@ -825,21 +846,23 @@ body {
 
     function showLoader(show) {
         document.getElementById('loader').style.display = show ? 'block' : 'none';
-        document.getElementById('result').style.display = 'none';
+        if (show) document.getElementById('result').style.display = 'none';
     }
 
-    // Allow Enter key to submit
+    // ---------- Input behavior ----------
     document.getElementById('serial-input').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            verifySerial();
-        }
+        if (e.key === 'Enter') verifySerial();
     });
 
-    // Auto-format serial input
     document.getElementById('serial-input').addEventListener('input', function(e) {
         this.value = this.value.toUpperCase();
     });
+
+    // Expose toggleScanner to inline button onclick (button already uses toggleScanner())
+    window.toggleScanner = toggleScanner;
+    window.verifySerial = verifySerial;
 </script>
+
 
 </body>
 </html>
