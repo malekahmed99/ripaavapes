@@ -1,32 +1,64 @@
 from flask import Flask, render_template, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
 import pandas as pd
 import os
-import tempfile
 
 app = Flask(__name__)
+
+# Database Configuration
+# Use DATABASE_URL env var if available (for cloud), otherwise local sqlite file
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///serials.db')
+# Fix for some cloud providers (like Heroku) using postgres:// instead of postgresql://
+if app.config['SQLALCHEMY_DATABASE_URI'].startswith("postgres://"):
+    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace("postgres://", "postgresql://", 1)
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+
 CSV_FILE = "serials.csv"
 TEMPLATE_FILE = os.path.join(app.template_folder or "templates", "index.html")
 
+# Database Model
+class Serial(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    serial_number = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    used = db.Column(db.Integer, default=0)
 
-def ensure_csv_has_used_column():
-    """Ensure CSV exists and has 'serial_number' and 'used' columns."""
-    if not os.path.exists(CSV_FILE):
-        # create an empty csv with headers
-        df = pd.DataFrame(columns=["serial_number", "used"])
-        df.to_csv(CSV_FILE, index=False)
+    def __repr__(self):
+        return f'<Serial {self.serial_number}>'
 
-
-def load_serials_df():
-    """Load the serials DataFrame safely."""
-    ensure_csv_has_used_column()
-    try:
-        df = pd.read_csv(CSV_FILE, dtype={"serial_number": str, "used": int})
-        return df
-    except Exception as e:
-        print("Error reading CSV:", e)
-        # Return empty df with correct columns
-        return pd.DataFrame(columns=["serial_number", "used"])
-
+def init_db():
+    """Initialize the database and seed from CSV if empty."""
+    with app.app_context():
+        db.create_all()
+        
+        # Check if we need to seed data
+        if Serial.query.first() is None:
+            print("Database empty. Seeding from CSV...")
+            if os.path.exists(CSV_FILE):
+                try:
+                    df = pd.read_csv(CSV_FILE, dtype={"serial_number": str, "used": int})
+                    # Ensure columns exist
+                    if "serial_number" in df.columns:
+                        # Bulk insert for performance
+                        serials_to_add = []
+                        for _, row in df.iterrows():
+                            # Handle potential missing 'used' column in CSV by defaulting to 0
+                            used_val = int(row['used']) if 'used' in df.columns and pd.notna(row['used']) else 0
+                            serials_to_add.append(Serial(serial_number=str(row['serial_number']).strip().upper(), used=used_val))
+                        
+                        db.session.add_all(serials_to_add)
+                        db.session.commit()
+                        print(f"Successfully seeded {len(serials_to_add)} serials.")
+                    else:
+                        print("CSV missing 'serial_number' column. Skipping seed.")
+                except Exception as e:
+                    print(f"Error seeding database from CSV: {e}")
+            else:
+                print(f"No {CSV_FILE} found. Starting with empty database.")
+        else:
+            print("Database already contains data. Skipping seed.")
 
 def verify_and_mark(serial):
     """
@@ -37,31 +69,22 @@ def verify_and_mark(serial):
     if not s:
         return False, "Empty serial"
 
-    df = load_serials_df()
+    # Find serial in DB
+    serial_record = Serial.query.filter_by(serial_number=s).first()
 
-    # find rows where serial matches (case-insensitive)
-    match_idx = df.index[df["serial_number"].astype(str).str.strip().str.upper() == s].tolist()
-
-    if not match_idx:
+    if not serial_record:
         return False, "❌ Fake or Unknown Product"
 
-    idx = match_idx[0]
-    used_val = int(df.at[idx, "used"]) if "used" in df.columns and pd.notna(df.at[idx, "used"]) else 0
-
-    if used_val == 1:
+    if serial_record.used == 1:
         return False, "⚠️ Serial already used"
 
-    # mark used and save atomically
+    # Mark used
     try:
-        df.at[idx, "used"] = 1
-        # write to temporary file then replace to reduce risk of corruption
-        dirn = os.path.dirname(os.path.abspath(CSV_FILE)) or "."
-        with tempfile.NamedTemporaryFile(mode="w", delete=False, dir=dirn, newline="") as tmpf:
-            tmp_path = tmpf.name
-            df.to_csv(tmp_path, index=False)
-        os.replace(tmp_path, CSV_FILE)
+        serial_record.used = 1
+        db.session.commit()
     except Exception as e:
-        print("Error updating CSV:", e)
+        db.session.rollback()
+        print("Error updating database:", e)
         return False, "⚠️ Verification failed (server error)"
 
     return True, "✅ Original Product (first scan — marked as used)"
@@ -101,11 +124,24 @@ def verify():
     valid, message = verify_and_mark(code)
     return jsonify({"status": message, "valid": valid})
 
+# Health check endpoint for cloud platforms
+@app.route("/health")
+def health():
+    return jsonify({"status": "healthy"}), 200
 
 if __name__ == "__main__":
     # Pre-start check to ensure index.html exists
     if not os.path.exists(TEMPLATE_FILE):
         print(f"⚠️  Warning: index.html not found at {TEMPLATE_FILE}.")
         print("   The site may return an error when accessed.")
-    ensure_csv_has_used_column()
+    
+    # Initialize DB
+    if not os.environ.get("TESTING"):
+        init_db()
+    
     app.run(debug=True)
+else:
+    # When running with gunicorn, we need to init db too.
+    if not os.environ.get("TESTING"):
+        init_db()
+
