@@ -6,7 +6,8 @@
   <link rel="profile" href="http://gmpg.org/xfn/11" />
   <link rel="pingback" href="https://www.ripevapes.com/xmlrpc.php" />
   <link rel="stylesheet" href="themes.css">
-
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="style/style.css">
    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/rateYo/2.3.2/jquery.rateyo.min.css">
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -4183,7 +4184,39 @@
     id="wc-add-to-cart-variation-js" defer="defer" data-wp-strategy="defer"></script>
   <script type="text/javascript" defer src="https://js.hsforms.net/forms/embed/v2.js?ver=11.3.21"
     id="leadin-forms-v2-js"></script>
+<div id="chat-widget-container">
+        <button id="chat-icon" class="chat-toggle-btn">
+            <i class="fas fa-comment-dots"></i>
+        </button>
 
+        <div id="chat-window" class="chat-window hidden">
+            <div class="chat-header">
+                <div class="chat-header-info">
+                    <img src="logo/logo_chat_bot.png" alt="Ripes Vapes Logo" class="chat-logo">
+                    <span>RipesVapes</span>
+                </div>
+                <button id="close-chat-btn" class="chat-toggle-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="chat-messages" id="chat-messages">
+                <div class="message bot-message">
+                    <p>Have a question for Ripe Vapes?</p>
+                </div>
+                <div class="message bot-message">
+                    <p>We'd love to help! Share as much detail as you can about your request in this message, and feel free to include your Whatsapp or phone number if that's easier than email.</p>
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <input type="text" id="chat-input" placeholder="Ask me anything...">
+                <button id="send-chat-btn"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="scripts/script.js"></script>
 </body>
 
 </html>
