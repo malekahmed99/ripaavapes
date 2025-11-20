@@ -1,0 +1,30 @@
+.star-rating {
+    font-size: 20px;           /* حجم النجوم */
+    color: #ccc;               /* لون النجوم الفارغة */
+    position: relative;
+    display: inline-block;
+}
+
+.star-rating span {
+    color: #A67C4B;            /* لون النجوم المملوءة */
+    display: block;
+    overflow: hidden;
+}
+
+.star-rating::before {
+    content: "\f005\f005\f005\f005\f005"; /* 5 نجوم فارغة */
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;         /* solid */
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.star-rating span::before {
+    content: "\f005\f005\f005\f005\f005"; /* 5 نجوم ممتلئة */
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;         /* solid */
+    position: absolute;
+    top: 0;
+    left: 0;
+}
